@@ -1,0 +1,6 @@
+/node_modules
+/dist
+email.html
+output.mjml
+output.dml
+process.env
