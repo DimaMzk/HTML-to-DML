@@ -3,4 +3,4 @@
 email.html
 output.mjml
 output.dml
-process.env
+.env

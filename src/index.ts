@@ -2,9 +2,9 @@ import { Configuration, OpenAIApi } from "openai";
 const prompt = require("prompt-sync")({ sigint: true });
 import { readFile, writeFile } from "fs/promises";
 import { decode } from "html-entities";
-var xml2js = require("xml2js");
+import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
 // get API key from process.env
-require("dotenv").config();
+import "dotenv/config";
 
 // https://platform.openai.com/account/api-keys
 const API_KEY = process.env.API_KEY;
@@ -37,15 +37,15 @@ async function generateText(prompt: string) {
 }
 
 async function convertToMJML(html: string) {
-  const prompt = `Convert the following HTML Email to MJML, avoid using mj-table where possible, except for images that should be side by side. If using <br> tags, ensure that they are self closing e.g. <br />. Footers with social media icons should use mj-social: \n ${html}`;
+  const prompt = `Convert the following portion of this HTML Email to MJML, avoid using mj-table where possible, except for images that should be side by side. If using <br> tags, ensure that they are self closing e.g. <br />.If content looks like a footer: social media icons should use mj-social: \n ${html}`;
   const MJML = await generateText(prompt);
   return MJML;
 }
 
 async function convertMJMLtoDML(MJML: string) {
-  const parser = new xml2js.Parser();
-
-  const parsed = await parser.parseStringPromise(MJML);
+  // use fast-xml-parser to parse the MJML, and get a list of all tags being used
+  const parser = new XMLParser();
+  const parsed = parser.parse(MJML);
 
   const tags = [];
 
