@@ -46,6 +46,17 @@ async function convertToMJML(html: string) {
   return MJML;
 }
 
+// Using GPT here to do this would be a waste of money,
+//    This is mostly a find+replace process that can be done ourselves,
+//    outside of the GPT API
+
+/**
+ * @deprecated
+ *
+ * Using GPT here to do this would be a waste of money,
+ *     This is mostly a find+replace process that can be done ourselves,
+ *     outside of the GPT API
+ */
 async function convertMJMLtoDML(MJML: string) {
   // use fast-xml-parser to parse the MJML, and get a list of all tags being used
   const parser = new XMLParser();
@@ -121,8 +132,12 @@ async function convertMJMLtoDML(MJML: string) {
   return DML;
 }
 
+// Traverse the HTML structure, and break it into chunks that are less than the max token size
+//    this is a very lossy process, and relies on GPT inferring any missing tags
+//    though, most of what will be lost are the very verbose table/outlook tags that aren't really
+//    that important for inferring content
 const autoBlockify = (html: string, maxTokenSize: number) => {
-  const tokenizer = new GPT3Tokenizer({ type: "codex" }); // or 'codex'
+  const tokenizer = new GPT3Tokenizer({ type: "gpt3" }); // or 'codex'
 
   const chunks: string[] = [];
 
