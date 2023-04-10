@@ -3,6 +3,9 @@ const prompt = require("prompt-sync")({ sigint: true });
 import { readFile, writeFile } from "fs/promises";
 import { decode } from "html-entities";
 import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
+import GPT3Tokenizer from "gpt3-tokenizer";
+import { JSDOM } from "jsdom";
+
 // get API key from process.env
 import "dotenv/config";
 
@@ -17,12 +20,13 @@ const openai = new OpenAIApi(configuration);
 async function generateText(prompt: string) {
   // calculate the number of tokens in the prompt
   // 1 token = 4 characters
-  const tokens = prompt.length / 4;
+  const tokenizer = new GPT3Tokenizer({ type: "gpt3" }); // or 'codex'
+
+  const encoded: { bpe: number[]; text: string[] } = tokenizer.encode(prompt);
+  const tokens = encoded.bpe.length;
   // calculate the number of tokens to generate
   // The Max number of tokens is technically 4000,
-  // but our method of calculating the number of tokens is horribly inaccurate
-  // so we'll use 3000 to give a large buffer
-  const maxTokens: number = Math.floor(3000 - tokens);
+  const maxTokens: number = Math.floor(4000 - tokens);
   const completion = await openai.createCompletion({
     model: "text-davinci-003",
     prompt: prompt,
@@ -117,6 +121,42 @@ async function convertMJMLtoDML(MJML: string) {
   return DML;
 }
 
+const autoBlockify = (html: string, maxTokenSize: number) => {
+  const tokenizer = new GPT3Tokenizer({ type: "codex" }); // or 'codex'
+
+  const chunks: string[] = [];
+
+  function traverse(node: Element): void {
+    const encoded: { bpe: number[]; text: string[] } = tokenizer.encode(
+      node.innerHTML
+    );
+    const estTokens = encoded.bpe.length;
+    if (estTokens <= maxTokenSize) {
+      chunks.push(node.outerHTML);
+      return;
+    }
+
+    for (const child of Array.from(node.children)) {
+      const encoded: { bpe: number[]; text: string[] } = tokenizer.encode(
+        child.outerHTML
+      );
+      const estTokens = encoded.bpe.length;
+      if (estTokens <= maxTokenSize) {
+        chunks.push(child.outerHTML);
+        child.remove();
+      } else {
+        traverse(child);
+      }
+    }
+  }
+
+  const dom = new JSDOM(html);
+  const root = dom.window.document.body;
+  traverse(root);
+
+  return chunks;
+};
+
 async function main() {
   console.clear();
   const fileName: string = prompt("File to Convert: ");
@@ -124,25 +164,49 @@ async function main() {
   const contents = await readFile(fileName, "utf8");
 
   console.clear();
+  console.log("Breaking HTML into blocks...");
+
+  // break the HTML into "blocks"
+  const blocks = autoBlockify(contents, 4000);
+
+  console.clear();
+  console.log(`Found ${blocks.length} blocks.`);
   console.log("Converting HTML to MJML...");
-  let MJML = decode(await convertToMJML(contents));
-  // remove <code> and </code>
-  MJML = MJML.replace(/<code>/g, "");
-  MJML = MJML.replace(/<\/code>/g, "");
 
-  // write the MJML to a file
-  await writeFile("output.mjml", MJML);
+  // convert each block to MJML
+  const mjmlBlocks = await Promise.all(
+    blocks.map(async (block) => {
+      return await convertToMJML(block);
+    })
+  );
 
-  console.clear();
-  console.log("Converting MJML to DML...");
-  let DML = decode(await convertMJMLtoDML(MJML));
-  console.clear();
-  // remove <code> and </code>
-  DML = DML.replace(/<code>/g, "");
-  DML = DML.replace(/<\/code>/g, "");
-  await writeFile("output.dml", DML);
-  console.log("DML saved to output.dml.");
-  console.log("MJML saved to output.mjml.");
+  console.log("Writing MJML to files...");
+
+  // write each block to a file
+  await Promise.all(
+    mjmlBlocks.map(async (block, i) => {
+      await writeFile(`mjml/output-${i}.mjml`, block);
+    })
+  );
+
+  // let MJML = decode(await convertToMJML(contents));
+  // // remove <code> and </code>
+  // MJML = MJML.replace(/<code>/g, "");
+  // MJML = MJML.replace(/<\/code>/g, "");
+
+  // // write the MJML to a file
+  // await writeFile("output.mjml", MJML);
+
+  // console.clear();
+  // console.log("Converting MJML to DML...");
+  // let DML = decode(await convertMJMLtoDML(MJML));
+  // console.clear();
+  // // remove <code> and </code>
+  // DML = DML.replace(/<code>/g, "");
+  // DML = DML.replace(/<\/code>/g, "");
+  // await writeFile("output.dml", DML);
+  // console.log("DML saved to output.dml.");
+  console.log("MJML saved to mjml/output-[BLOCK_NUMBER].mjml.");
   console.log("");
   console.log(
     "End results may not be 100% accurate, some attributes may be invalid and need to be manually removed. Some images may be larger than expected"
