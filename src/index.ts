@@ -1,14 +1,11 @@
 import { Configuration, OpenAIApi } from "openai";
 const prompt = require("prompt-sync")({ sigint: true });
 import { readFile, writeFile, access, mkdir, readdir } from "fs/promises";
-import { decode } from "html-entities";
-import { XMLParser, XMLBuilder, XMLValidator } from "fast-xml-parser";
+import { XMLParser } from "fast-xml-parser";
 import * as xml2js from "xml2js";
 import GPT3Tokenizer from "gpt3-tokenizer";
 import { JSDOM } from "jsdom";
 const path = require("path");
-import { parse } from "parse5";
-import { Node } from "parse5/dist/tree-adapters/default.js";
 
 const createFolderIfNotExist = async (folderName: string): Promise<void> => {
   const folderExists = await access(folderName)
@@ -72,92 +69,6 @@ async function convertToMJML(html: string) {
   const prompt = `Convert the following portion of this HTML Email to MJML, avoid using mj-table where possible, except for images that should be side by side. If using <br> tags, ensure that they are self closing e.g. <br />.If content looks like a footer: social media icons should use mj-social: \n ${html}`;
   const MJML = await generateText(prompt);
   return MJML;
-}
-
-// Using GPT here to do this would be a waste of money,
-//    This is mostly a find+replace process that can be done ourselves,
-//    outside of the GPT API
-
-/**
- * @deprecated
- *
- * Using GPT here to do this would be a waste of money,
- *     This is mostly a find+replace process that can be done ourselves,
- *     outside of the GPT API
- */
-async function convertMJMLtoDML(MJML: string) {
-  // use fast-xml-parser to parse the MJML, and get a list of all tags being used
-  const parser = new XMLParser();
-  const parsed = parser.parse(MJML);
-
-  const tags = [];
-
-  function traverse(obj) {
-    for (const key in obj) {
-      tags.push(key);
-      if (typeof obj[key] === "object") {
-        traverse(obj[key]);
-      }
-    }
-  }
-
-  traverse(parsed);
-
-  const tags_all = Array.from(new Set(tags)).filter((t) => t.startsWith("mj-"));
-
-  // Create a prompt for each tag
-  let prompt =
-    "Convert the following MJML Email to DML - Here are the key differences between MJML and DML: \n";
-  prompt +=
-    "MJML uses <mjml> as the root element, DML uses <dys-block> as the root element. \n";
-  prompt +=
-    "MJML uses <mj-body> as the body element, DML does not have a body element, placing everything within <dys-block>. \n";
-  prompt +=
-    "MJML uses <mj-section> as the section element, DML uses <dys-row>. \n";
-  prompt +=
-    "MJML uses <mj-column> as the column element, DML uses <dys-column>. \n";
-
-  // Create a prompt for each tag
-  for (let i = 0; i < tags_all.length; i++) {
-    switch (tags_all[i]) {
-      case "mj-button":
-        prompt +=
-          "MJML uses <mj-button> as the button element, DML uses <dys-button>. \n";
-        break;
-      case "mj-divider":
-        prompt +=
-          "MJML uses <mj-divider> as the divider element, DML uses <dys-divider>. \n";
-        break;
-      case "mj-image":
-        prompt +=
-          "MJML uses <mj-image> as the image element, DML uses <dys-img>, if the width attribute contains 100%, replace it with 600px. \n";
-        break;
-      case "mj-text":
-        prompt +=
-          "MJML uses <mj-text> as the text element, DML uses <dys-text>. <p> tags within a dsy-text are redundant \n";
-        break;
-      case "mj-wrapper":
-        prompt +=
-          "MJML uses <mj-wrapper> as the wrapper element, DML uses <dys-wrapper>. \n";
-        break;
-      case "mj-social":
-        prompt +=
-          "MJML uses <mj-social> as the social element, DML uses <dys-social>. \n";
-        break;
-      case "mj-social-element":
-        prompt +=
-          "MJML uses <mj-social-element> as the social element, DML uses <dys-social-element>. \n";
-        break;
-      default:
-        break;
-    }
-  }
-
-  prompt += "\nHere is the MJML: \n\n" + MJML;
-
-  const DML = await generateText(prompt);
-
-  return DML;
 }
 
 // Traverse the HTML structure, and break it into chunks that are less than the max token size
